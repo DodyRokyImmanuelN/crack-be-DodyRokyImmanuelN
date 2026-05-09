@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -9,13 +10,17 @@ import { PrismaService } from '../../database/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
+import { MailService } from './mail.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private mailService: MailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -148,8 +153,20 @@ export class AuthService {
   });
 
   return tokens;
-}
-decodeToken(token: string) {
-  return this.jwtService.decode(token) as { sub: string };
-}
+  }
+    decodeToken(token: string) {
+      return this.jwtService.decode(token) as { sub: string };
+  }
+    
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({ where: {email}});
+    // generic response untuk mencegah enumeration attack
+    if(!user) {
+      this.logger.warn(`Forgot password attempt for unregistered email: ${email}` );
+      return { message : 'We have sent a reset password link to your email address.' };
+    }
+    //generate token plain (dikirim via email)
+    const plainToken = crypto.randomBytes(32).toString('hex');
+  }
+
 }

@@ -13,13 +13,20 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { EnrollmentGuard } from '../../common/guards/enrollment.guard';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 
+
+@ApiTags('Quizzes')
 @Controller('quizzes')
 export class QuizzesController {
   constructor(private quizzesService: QuizzesService) {}
 
   // PUBLIC — ambil quiz by lesson (tanpa jawaban benar)
+  @ApiOperation({ summary: 'Get quizzes for a lesson' })
+  @ApiBearerAuth()
   @Get('lesson/:lessonId')
+  @UseGuards(JwtAuthGuard, EnrollmentGuard)
   async findByLesson(@Param('lessonId') lessonId: string) {
     const data = await this.quizzesService.findByLesson(lessonId);
     return {
@@ -30,6 +37,8 @@ export class QuizzesController {
   }
 
   // PROTECTED — submit jawaban quiz
+  @ApiOperation({ summary: 'Submit quiz answers' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post(':id/submit')
   async submit(
@@ -46,6 +55,8 @@ export class QuizzesController {
   }
 
   // ADMIN ONLY — buat quiz
+  @ApiOperation({ summary: 'Admin — create a quiz' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Post()

@@ -13,12 +13,16 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Throttle } from '@nestjs/throttler';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
     constructor( private authService: AuthService) {}
     
-
+    @ApiOperation({ summary: 'Register a new user' })
+    @Throttle({strict: {ttl: 60000, limit: 10}})
     @Post('register')
     async register(@Body() dto: RegisterDto) {
         const user = await this.authService.register(dto);
@@ -29,6 +33,9 @@ export class AuthController {
         };
     }
 
+
+    @ApiOperation({ summary: 'Login with email and password' })
+    @Throttle({strict: {ttl: 60000, limit: 10}})
     @Post('login')
     async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
         const result = await this.authService.login(dto);
@@ -49,6 +56,8 @@ export class AuthController {
       },
     };  
     }
+    @ApiOperation({ summary: 'Logout the current user' })
+    @ApiBearerAuth()
     @UseGuards(JwtAuthGuard)
     @Post('logout')
     async logout(
@@ -63,6 +72,9 @@ export class AuthController {
         message: 'Logout was successful',
       };
     }
+
+    @ApiOperation({ summary: 'Refresh access token using refresh token cookie' })
+    @Throttle({strict: {ttl: 60000, limit: 10}})
     @Post('refresh')
 async refresh(
   @Req() req: Request,

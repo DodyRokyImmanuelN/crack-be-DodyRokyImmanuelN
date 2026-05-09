@@ -12,12 +12,47 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { ProgressModule } from './modules/progress/progress.module';
 import { CertificatesModule } from './modules/certificates/certificates.module';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
+import { AiModule } from './modules/ai/ai.module';
+import { UsersModule } from './modules/users/users.module';
+import { ThrottlerGuard,ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+
 
 @Module({
   imports: [ ConfigModule.forRoot({
     isGlobal: true,
-  }),  AuthModule, PrismaModule, LearningPathsModule, ModulesModule, LessonsModule, QuizzesModule, PaymentsModule, ProgressModule, CertificatesModule, EnrollmentsModule,],
+  }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'global',
+        ttl:60000,
+        limit:100,
+      },
+      {
+        name: 'strict',
+        ttl: 60000,
+        limit: 10,
+      },
+    ]),
+    AuthModule,
+    PrismaModule,
+    LearningPathsModule, 
+    ModulesModule, 
+    LessonsModule, 
+    QuizzesModule, 
+    PaymentsModule, 
+    ProgressModule, 
+    CertificatesModule, 
+    EnrollmentsModule, 
+    AiModule, 
+    UsersModule,],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

@@ -8,12 +8,17 @@ import {
 import { ProgressService } from './progress.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 
+@ApiBearerAuth()  
+@ApiTags('Progress')
 @Controller('progress')
 export class ProgressController {
   constructor(private progressService: ProgressService) {}
 
   // Complete lesson READING
+  @ApiOperation({ summary: 'Mark a lesson as complete' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Patch(':lessonId/complete')
   async completeLesson(
@@ -29,6 +34,7 @@ export class ProgressController {
   }
 
   // Get progress user di sebuah module
+  @ApiOperation({ summary: 'Get user progress for a module' })
   @UseGuards(JwtAuthGuard)
   @Get('module/:moduleId')
   async getModuleProgress(

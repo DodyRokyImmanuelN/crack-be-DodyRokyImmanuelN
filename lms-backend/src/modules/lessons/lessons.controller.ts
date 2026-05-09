@@ -15,12 +15,17 @@ import { UpdateLessonDto } from './dto/update-lesson.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { EnrollmentGuard } from '../../common/guards/enrollment.guard';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 
+
+@ApiTags('Lessons')
 @Controller('lessons')
 export class LessonsController {
   constructor(private lessonsService: LessonsService) {}
 
   // PUBLIC
+  @ApiOperation({ summary: 'Get lessons by module' })
   @Get()
   async findByModule(@Query('moduleId') moduleId: string) {
     const data = await this.lessonsService.findByModule(moduleId);
@@ -31,6 +36,9 @@ export class LessonsController {
     };
   }
 
+  @ApiOperation({ summary: 'Get lesson detail by id' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, EnrollmentGuard)
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const data = await this.lessonsService.findOne(id);
@@ -42,6 +50,8 @@ export class LessonsController {
   }
 
   // ADMIN ONLY
+  @ApiOperation({ summary: 'Admin — create a lesson' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Post()
@@ -54,6 +64,8 @@ export class LessonsController {
     };
   }
 
+  @ApiOperation({ summary: 'Admin — update a lesson' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Patch(':id')
@@ -69,6 +81,8 @@ export class LessonsController {
     };
   }
 
+  @ApiOperation({ summary: 'Admin — delete a lesson' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Delete(':id')

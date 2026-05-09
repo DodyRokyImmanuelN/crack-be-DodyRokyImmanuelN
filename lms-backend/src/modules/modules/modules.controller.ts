@@ -15,12 +15,15 @@ import { UpdateModuleDto } from './dto/update-module.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 
+@ApiTags('Modules')
 @Controller('modules')
 export class ModulesController {
   constructor(private modulesService: ModulesService) {}
 
   // PUBLIC — lihat modul berdasarkan learning path
+  @ApiOperation({ summary: 'Get modules by learning path' })
   @Get()
   async findByLearningPath(@Query('learningPathId') learningPathId: string) {
     const data = await this.modulesService.findByLearningPath(learningPathId);
@@ -31,6 +34,7 @@ export class ModulesController {
     };
   }
 
+  @ApiOperation({ summary: 'Get module details by id' })
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const data = await this.modulesService.findOne(id);
@@ -42,6 +46,8 @@ export class ModulesController {
   }
 
   // ADMIN ONLY
+  @ApiOperation({ summary: 'Admin — create a module' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Post()
@@ -53,7 +59,8 @@ export class ModulesController {
       data,
     };
   }
-
+  @ApiOperation({ summary: 'Admin — update a module' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Patch(':id')
@@ -69,6 +76,8 @@ export class ModulesController {
     };
   }
 
+  @ApiOperation({ summary: 'Admin — delete a module' })
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Delete(':id')
@@ -76,7 +85,7 @@ export class ModulesController {
     const data = await this.modulesService.remove(id);
     return {
       success: true,
-      message: data.message,
+      message: 'Module successfuly deleted',
     };
   }
 }
