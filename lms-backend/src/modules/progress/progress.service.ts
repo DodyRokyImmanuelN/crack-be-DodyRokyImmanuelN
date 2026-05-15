@@ -9,8 +9,30 @@ import { PrismaService } from '../../database/prisma.service';
 export class ProgressService {
   constructor(private prisma: PrismaService) {}
 
+  async trackLessonAccess(userId: string, lessonId: string) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+    });
+
+    if (!lesson) throw new NotFoundException('Lesson not found');
+
+    return this.prisma.progress.upsert({
+      where: {
+        userId_lessonId: { userId, lessonId },
+      },
+      update: {
+        lastAccessedAt: new Date(),
+      },
+      create: {
+        userId,
+        lessonId,
+        status: 'NOT_STARTED',
+        lastAccessedAt: new Date(),
+      },
+    });
+  }
+
   async completeLesson(userId: string, lessonId: string) {
-    // Cek lesson ada
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
@@ -26,14 +48,12 @@ export class ProgressService {
       throw new NotFoundException('Lesson not found');
     }
 
-    // Cek hanya lesson READING yang bisa di-complete manual
     if (lesson.type !== 'READING') {
       throw new BadRequestException(
         'Only READING lessons can be manually completed. QUIZ lessons are completed automatically after passing.',
       );
     }
 
-    // Cek user sudah enroll
     const enrollment = await this.prisma.enrollment.findUnique({
       where: {
         userId_learningPathId: {
@@ -49,7 +69,6 @@ export class ProgressService {
       );
     }
 
-    // Update progress ke COMPLETED
     const progress = await this.prisma.progress.upsert({
       where: {
         userId_lessonId: {
@@ -60,16 +79,17 @@ export class ProgressService {
       update: {
         status: 'COMPLETED',
         completedAt: new Date(),
+        lastAccessedAt: new Date(),
       },
       create: {
         userId,
         lessonId,
         status: 'COMPLETED',
         completedAt: new Date(),
+        lastAccessedAt: new Date(),
       },
     });
 
-    // Cek apakah semua lesson dalam module sudah selesai
     await this.checkModuleCompletion(
       userId,
       lesson.moduleId,
@@ -93,11 +113,13 @@ export class ProgressService {
       throw new NotFoundException('Module not found');
     }
 
-    // Ambil progress user untuk semua lesson di module ini
     const progresses = await this.prisma.progress.findMany({
       where: {
         userId,
         lessonId: { in: module.lessons.map((l) => l.id) },
+      },
+      orderBy: {
+        lastAccessedAt: 'desc',
       },
     });
 
@@ -115,6 +137,14 @@ export class ProgressService {
       (l) => l.progress === 'COMPLETED',
     ).length;
 
+    // Ambil lesson yang paling terakhir diakses
+    const lastAccessedProgress = progresses.find(
+      (p) => p.lastAccessedAt !== null,
+    );
+    const lastAccessedLesson = lastAccessedProgress
+      ? module.lessons.find((l) => l.id === lastAccessedProgress.lessonId)
+      : null;
+
     return {
       moduleId,
       totalLessons: module.lessons.length,
@@ -122,6 +152,7 @@ export class ProgressService {
       percentage: Math.round(
         (completedCount / module.lessons.length) * 100,
       ),
+      lastAccessedLessonSlug: lastAccessedLesson?.slug ?? null,
       lessons: lessonsWithProgress,
     };
   }
@@ -131,12 +162,10 @@ export class ProgressService {
     moduleId: string,
     learningPathId: string,
   ) {
-    // Ambil semua lesson dalam module
     const lessons = await this.prisma.lesson.findMany({
       where: { moduleId },
     });
 
-    // Ambil semua progress COMPLETED untuk lesson di module ini
     const completedProgresses = await this.prisma.progress.findMany({
       where: {
         userId,
@@ -145,12 +174,8 @@ export class ProgressService {
       },
     });
 
-    // Kalau semua lesson sudah selesai
     if (completedProgresses.length === lessons.length) {
-      // Generate sertifikat modul
       await this.generateModuleCertificate(userId, moduleId);
-
-      // Cek apakah semua module dalam learning path sudah selesai
       await this.checkLearningPathCompletion(userId, learningPathId);
     }
   }
@@ -159,13 +184,11 @@ export class ProgressService {
     userId: string,
     learningPathId: string,
   ) {
-    // Ambil semua module dalam learning path
     const modules = await this.prisma.module.findMany({
       where: { learningPathId },
       include: { lessons: true },
     });
 
-    // Cek semua lesson di semua module sudah selesai
     const allLessonIds = modules.flatMap((m) => m.lessons.map((l) => l.id));
 
     const completedProgresses = await this.prisma.progress.findMany({
@@ -177,7 +200,6 @@ export class ProgressService {
     });
 
     if (completedProgresses.length === allLessonIds.length) {
-      // Update enrollment status ke COMPLETED
       await this.prisma.enrollment.update({
         where: {
           userId_learningPathId: {
@@ -191,13 +213,11 @@ export class ProgressService {
         },
       });
 
-      // Generate sertifikat learning path
       await this.generateLearningPathCertificate(userId, learningPathId);
     }
   }
 
   private async generateModuleCertificate(userId: string, moduleId: string) {
-    // Cek apakah sertifikat sudah ada
     const existing = await this.prisma.certificate.findFirst({
       where: { userId, moduleId, type: 'MODULE' },
     });

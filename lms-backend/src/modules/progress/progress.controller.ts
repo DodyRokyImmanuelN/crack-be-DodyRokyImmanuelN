@@ -3,6 +3,8 @@ import {
   Get,
   Param,
   Patch,
+  Post,
+  Body,
   UseGuards,
 } from '@nestjs/common';
 import { ProgressService } from './progress.service';
@@ -10,15 +12,33 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 
-@ApiBearerAuth()  
+@ApiBearerAuth()
 @ApiTags('Progress')
 @Controller('progress')
 export class ProgressController {
   constructor(private progressService: ProgressService) {}
 
+  // Track lesson access 
+  @ApiOperation({ summary: 'Track lesson access for resume functionality' })
+  @UseGuards(JwtAuthGuard)
+  @Post('access')
+  async trackAccess(
+    @Body() body: { lessonId: string },
+    @CurrentUser() user: { id: string },
+  ) {
+    const data = await this.progressService.trackLessonAccess(
+      user.id,
+      body.lessonId,
+    );
+    return {
+      success: true,
+      message: 'Lesson access tracked successfully',
+      data,
+    };
+  }
+
   // Complete lesson READING
   @ApiOperation({ summary: 'Mark a lesson as complete' })
-  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Patch(':lessonId/complete')
   async completeLesson(

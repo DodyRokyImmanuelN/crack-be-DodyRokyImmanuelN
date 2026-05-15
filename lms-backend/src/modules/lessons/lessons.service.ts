@@ -6,6 +6,8 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
+import slugify from 'slugify';
+import { LessonType } from '@prisma/client';
 
 @Injectable()
 export class LessonsService {
@@ -20,11 +22,15 @@ export class LessonsService {
       throw new NotFoundException('Module not found');
     }
 
-    if (dto.type === 'READING' && !dto.content) {
+    if (dto.type === LessonType.READING && !dto.content) {
       throw new BadRequestException(
         'Content is required for READING type lesson',
       );
     }
+
+    const baseSlug = slugify(dto.title, { lower: true, strict: true });
+    const suffix = Math.random().toString(36).slice(2, 10);
+    const slug = `${baseSlug}-${suffix}`;
 
     return this.prisma.$transaction(async (tx) => {
       const lesson = await tx.lesson.create({
@@ -33,26 +39,30 @@ export class LessonsService {
           title: dto.title,
           type: dto.type,
           order: dto.order,
+          slug,
         },
       });
 
-      if (dto.type === 'READING') {
+      if (dto.type === LessonType.READING) {
         await tx.readingContent.create({
           data: {
             lessonId: lesson.id,
             content: dto.content!,
-            videoUrl: dto.videoUrl,
+            videoUrl: dto.videoUrl, // opsional, bisa null
           },
         });
       }
 
-      return lesson;
+      return tx.lesson.findUnique({
+        where: { id: lesson.id },
+        include: { readingContent: true },
+      });
     });
   }
 
-  async findOne(id: string) {
+  async findBySlug(slug: string) {
     const lesson = await this.prisma.lesson.findUnique({
-      where: { id },
+      where: { slug },
       include: {
         readingContent: true,
         quiz: {
@@ -94,6 +104,7 @@ export class LessonsService {
       orderBy: { order: 'asc' },
       select: {
         id: true,
+        slug: true,
         title: true,
         type: true,
         order: true,
@@ -119,11 +130,16 @@ export class LessonsService {
         },
       });
 
-      if (lesson.type === 'READING' && (dto.content || dto.videoUrl)) {
-        await tx.readingContent.update({
+      if (lesson.type === LessonType.READING && (dto.content || dto.videoUrl)) {
+        await tx.readingContent.upsert({
           where: { lessonId: id },
-          data: {
+          update: {
             content: dto.content,
+            videoUrl: dto.videoUrl,
+          },
+          create: {
+            lessonId: id,
+            content: dto.content ?? '',
             videoUrl: dto.videoUrl,
           },
         });

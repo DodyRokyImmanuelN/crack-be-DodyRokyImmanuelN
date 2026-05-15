@@ -6,6 +6,9 @@ import {
   UseGuards,
   Req,
   UnauthorizedException,
+  Get,
+  Query,
+  Logger,
 } from '@nestjs/common';
 import type { Response,Request } from 'express';
 import { AuthService } from './auth.service';
@@ -15,6 +18,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -109,5 +114,22 @@ async refresh(
     },
   };
 }
- 
+
+    // forgot password
+    @ApiOperation({ summary: 'Request password reset' })
+    @Throttle({strict: {ttl: 60000, limit: 5}})
+    @Post('forgot-password')
+    async forgotPassword(@Body() dto: ForgotPasswordDto){
+      return this.authService.forgotPassword(dto.email);
+    }
+
+    @Get('verify-reset-token')
+    async verifyResetToken(@Query('token') token: string) {
+    return this.authService.verifyResetToken(token);
+    }
+
+    @Post('reset-password')
+    async resetPassword(@Body() dto: ResetPasswordDto) {
+      return this.authService.resetPassword(dto.token, dto.newPassword);
+    }
 }

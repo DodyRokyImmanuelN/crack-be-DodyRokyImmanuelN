@@ -26,21 +26,29 @@ export class ModulesController {
   @ApiOperation({ summary: 'Get modules by learning path' })
   @Get()
   async findByLearningPath(@Query('learningPathId') learningPathId: string) {
+    if (!learningPathId) {
+      return {
+        success: false,
+        message: 'learningPathId query is required',
+        data: [],
+      };
+    }
+
     const data = await this.modulesService.findByLearningPath(learningPathId);
     return {
       success: true,
-      message: 'Modules successfuly taken',
+      message: 'Modules successfully retrieved',
       data,
     };
   }
 
-  @ApiOperation({ summary: 'Get module details by id' })
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
-    const data = await this.modulesService.findOne(id);
+  @ApiOperation({ summary: 'Get module details by slug' })
+  @Get(':slug')
+  async findOne(@Param('slug') slug: string) {
+    const data = await this.modulesService.findBySlug(slug);
     return {
       success: true,
-      message: 'Module successfuly taken',
+      message: 'Module successfully retrieved',
       data,
     };
   }
@@ -55,23 +63,21 @@ export class ModulesController {
     const data = await this.modulesService.create(dto);
     return {
       success: true,
-      message: 'Module successfuly created',
+      message: 'Module successfully created',
       data,
     };
   }
+
   @ApiOperation({ summary: 'Admin — update a module' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() dto: UpdateModuleDto,
-  ) {
+  async update(@Param('id') id: string, @Body() dto: UpdateModuleDto) {
     const data = await this.modulesService.update(id, dto);
     return {
       success: true,
-      message: 'Module successfuly updated',
+      message: 'Module successfully updated',
       data,
     };
   }
@@ -82,10 +88,10 @@ export class ModulesController {
   @Roles('ADMIN')
   @Delete(':id')
   async remove(@Param('id') id: string) {
-    const data = await this.modulesService.remove(id);
+    await this.modulesService.remove(id);
     return {
       success: true,
-      message: 'Module successfuly deleted',
+      message: 'Module successfully deleted',
     };
   }
 }

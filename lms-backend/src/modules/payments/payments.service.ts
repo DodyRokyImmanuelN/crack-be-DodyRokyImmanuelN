@@ -67,7 +67,7 @@ export class PaymentsService {
     const invoice = await xendit.Invoice.createInvoice({
       data: {
         externalId: `payment-${userId}-${dto.learningPathId}-${Date.now()}`,
-        amount: learningPath.price,
+        amount: Number(learningPath.price),
         payerEmail: user!.email,
         description: `Pembayaran untuk: ${learningPath.title}`,
         invoiceDuration: 86400, // 24 jam dalam detik
@@ -81,7 +81,7 @@ export class PaymentsService {
       data: {
         userId,
         learningPathId: dto.learningPathId,
-        amount: learningPath.price,
+        amount: Number(learningPath.price),
         status: 'PENDING',
         xenditInvoiceId: invoice.id,
         xenditPaymentUrl: invoice.invoiceUrl,

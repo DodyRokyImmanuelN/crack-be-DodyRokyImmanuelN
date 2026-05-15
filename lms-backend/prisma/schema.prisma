@@ -73,7 +73,7 @@ model LearningPath {
   slug        String   @unique
   description String
   thumbnail   String?
-  price       Int
+  price       Decimal  @db.Decimal(10, 2)
   isPublished Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -88,6 +88,7 @@ model Module {
   id             String   @id @default(uuid())
   learningPathId String
   title          String
+  slug           String   @unique
   description    String?
   order          Int
   createdAt      DateTime @default(now())
@@ -102,6 +103,7 @@ model Lesson {
   id        String     @id @default(uuid())
   moduleId  String
   title     String
+  slug      String     @unique
   type      LessonType
   order     Int
   createdAt DateTime   @default(now())
@@ -190,6 +192,7 @@ model Progress {
   status      ProgressStatus @default(NOT_STARTED)
   score       Int?
   completedAt DateTime?
+  lastAccessedAt DateTime?
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
@@ -215,7 +218,7 @@ model Payment {
   id               String        @id @default(uuid())
   userId           String
   learningPathId   String
-  amount           Int
+  amount           Decimal       @db.Decimal(10, 2)
   status           PaymentStatus @default(PENDING)
   xenditInvoiceId  String?       @unique
   xenditPaymentUrl String?

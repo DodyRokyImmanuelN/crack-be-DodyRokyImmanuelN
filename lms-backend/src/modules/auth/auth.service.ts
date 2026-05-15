@@ -3,6 +3,7 @@ import {
   Injectable,
   UnauthorizedException,
   Logger,
+
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -109,7 +110,7 @@ export class AuthService {
 
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: this.configService.getOrThrow<string>('JWT_SECRET'),
-      expiresIn: '15m',
+      expiresIn: '7d',
     });
 
     const refreshToken = await this.jwtService.signAsync(
@@ -146,7 +147,7 @@ export class AuthService {
   const tokens = await this.generateTokens(user.id, user.email, user.role);
 
   // Update refresh token di database
-  const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 12);
+  const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
   await this.prisma.user.update({
     where: { id: user.id },
     data: { refreshToken: hashedRefreshToken },
@@ -167,6 +168,83 @@ export class AuthService {
     }
     //generate token plain (dikirim via email)
     const plainToken = crypto.randomBytes(32).toString('hex');
+    // hash token sebelum di simpan di database 
+    const hashedToken = await bcrypt.hash(plainToken, 10 );
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 menit
+
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: hashedToken,
+        passwordResetExpiry: expiry,
+      },
+    });
+
+    //kirim plain token via email
+
+    await this.mailService.sendResetPasswordEmail(user.email, plainToken);
+    this.logger.log(`Reset password token generated and email sent to: ${email}`);
+    return { message: `We have sent a reset password link to your email address`};
   }
+  // verify token 
+  async verifyResetToken( token: string) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        passwordResetToken: {not: null},
+        passwordResetExpiry: {gt: new Date()},
+      },
+    });
+
+    // cari user dengan token yang cocok
+    for (const user of users) {
+      const isMatch = await bcrypt.compare( token, user.passwordResetToken!);
+      if (isMatch) {
+        return { valid: true, message: 'Reset token is valid' };
+      }
+    }
+    throw new BadRequestException('Reset token is invalid or has expired');
+  }
+
+  // reset password
+
+  async resetPassword(token: string, newPassword: string){
+    // cari semua user dengan token yang masih valid
+    const users = await this.prisma.user.findMany({
+      where: {
+        passwordResetToken: {not: null},
+        passwordResetExpiry: {gt: new Date()},
+       },
+    });
+
+    // cari user dengan token yang cocok 
+    let matchedUser: Awaited<ReturnType<typeof this.prisma.user.findFirst>> = null;
+    for (const user of users) {
+      const isMatch = await bcrypt.compare(token, user.passwordResetToken!);
+      if (isMatch) {
+        matchedUser = user;
+        break;
+      }
+    }
+    if (!matchedUser) {
+      throw new BadRequestException('Reset token is invalid or has expired');
+    }
+
+    //hash password baru dan clear token 
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: matchedUser.id},
+      data : {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpiry: null,
+      },
+    });
+
+    this.logger.log(`Password reset successful for user: ${matchedUser.email}`);
+    return { message: ' Password has been reset successfully'};
+  }
+  
 
 }

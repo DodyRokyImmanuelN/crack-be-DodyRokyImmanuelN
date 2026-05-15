@@ -5,6 +5,8 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
+import slugify from 'slugify';
+import { v4 as uuidv4 } from 'uuid'; 
 
 @Injectable()
 export class ModulesService {
@@ -19,6 +21,8 @@ export class ModulesService {
     if (!learningPath) {
       throw new NotFoundException('Learning path not found');
     }
+    const baseSlug = slugify(dto.title, { lower: true, strict: true });
+    const slug = `${baseSlug}-${uuidv4().slice(0, 8)}`;
 
     return this.prisma.module.create({
       data: {
@@ -26,6 +30,7 @@ export class ModulesService {
         description: dto.description,
         order: dto.order,
         learningPathId: dto.learningPathId,
+        slug,
       },
     });
   }
@@ -45,6 +50,7 @@ export class ModulesService {
       orderBy: { order: 'asc' },
       select: {
         id: true,
+        slug: true,
         title: true,
         description: true,
         order: true,
@@ -55,14 +61,15 @@ export class ModulesService {
     });
   }
 
-  async findOne(id: string) {
+  async findBySlug(slug: string) {
     const module = await this.prisma.module.findUnique({
-      where: { id },
+      where: { slug },
       include: {
         lessons: {
           orderBy: { order: 'asc' },
           select: {
             id: true,
+            slug: true,
             title: true,
             type: true,
             order: true,

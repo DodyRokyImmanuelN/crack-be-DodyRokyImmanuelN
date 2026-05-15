@@ -8,9 +8,9 @@ import {
   IsUrl,
   Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateLearningPathDto {
-
   @ApiProperty({
     example: 'Full Stack Web Development',
     description: 'Title of the learning path',
@@ -30,6 +30,7 @@ export class CreateLearningPathDto {
   @ApiProperty({
     example: 'https://example.com/thumbnail.jpg',
     description: 'URL of the learning path thumbnail',
+    required: false,
   })
   @IsUrl()
   @IsOptional()
@@ -37,15 +38,20 @@ export class CreateLearningPathDto {
 
   @ApiProperty({
     example: 99.99,
-    description: 'Price of the learning path',
+    description: 'Price of the learning path (must be >= 0)',
   })
-  @IsNumber()
-  @Min(0)
+  @Type(() => Number)
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Price must be a valid number with max 2 decimal places' },
+  )
+  @Min(0, { message: 'Price must not be less than 0' })
   price!: number;
 
   @ApiProperty({
     example: true,
     description: 'Whether the learning path is published',
+    required: false,
   })
   @IsBoolean()
   @IsOptional()

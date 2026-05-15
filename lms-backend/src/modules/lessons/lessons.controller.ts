@@ -18,7 +18,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { EnrollmentGuard } from '../../common/guards/enrollment.guard';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 
-
 @ApiTags('Lessons')
 @Controller('lessons')
 export class LessonsController {
@@ -28,23 +27,31 @@ export class LessonsController {
   @ApiOperation({ summary: 'Get lessons by module' })
   @Get()
   async findByModule(@Query('moduleId') moduleId: string) {
+    if (!moduleId) {
+      return {
+        success: false,
+        message: 'moduleId query is required',
+        data: [],
+      };
+    }
+
     const data = await this.lessonsService.findByModule(moduleId);
     return {
       success: true,
-      message: 'Lessons fetched successfully',
+      message: 'Lessons retrieved successfully',
       data,
     };
   }
 
-  @ApiOperation({ summary: 'Get lesson detail by id' })
+  @ApiOperation({ summary: 'Get lesson detail by slug' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, EnrollmentGuard)
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
-    const data = await this.lessonsService.findOne(id);
+  @Get(':slug')
+  async findOne(@Param('slug') slug: string) {
+    const data = await this.lessonsService.findBySlug(slug);
     return {
       success: true,
-      message: 'Lesson fetched successfully',
+      message: 'Lesson retrieved successfully',
       data,
     };
   }
@@ -69,10 +76,7 @@ export class LessonsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() dto: UpdateLessonDto,
-  ) {
+  async update(@Param('id') id: string, @Body() dto: UpdateLessonDto) {
     const data = await this.lessonsService.update(id, dto);
     return {
       success: true,
@@ -87,10 +91,10 @@ export class LessonsController {
   @Roles('ADMIN')
   @Delete(':id')
   async remove(@Param('id') id: string) {
-    const data = await this.lessonsService.remove(id);
+    await this.lessonsService.remove(id);
     return {
       success: true,
-      message: data.message,
+      message: 'Lesson deleted successfully',
     };
   }
 }

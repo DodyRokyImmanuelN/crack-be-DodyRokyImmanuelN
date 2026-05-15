@@ -6,13 +6,14 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CreateQuizDto } from './dto/create-quiz.dto';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
+import { UpdateQuizDto } from './dto/update-quiz.dto';
+import { CertificateType } from '@prisma/client';
 
 @Injectable()
 export class QuizzesService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateQuizDto) {
-    // Cek apakah lesson ada dan tipenya QUIZ
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: dto.lessonId },
     });
@@ -25,7 +26,6 @@ export class QuizzesService {
       throw new BadRequestException('Lesson type must be QUIZ');
     }
 
-    // Cek apakah quiz sudah ada untuk lesson ini
     const existingQuiz = await this.prisma.quiz.findUnique({
       where: { lessonId: dto.lessonId },
     });
@@ -34,7 +34,6 @@ export class QuizzesService {
       throw new BadRequestException('Quiz already exists for this lesson');
     }
 
-    // Buat quiz + questions + options dalam satu transaksi
     return this.prisma.$transaction(async (tx) => {
       const quiz = await tx.quiz.create({
         data: {
@@ -64,7 +63,6 @@ export class QuizzesService {
         });
       }
 
-      // Return quiz dengan semua questions dan options
       return tx.quiz.findUnique({
         where: { id: quiz.id },
         include: {
@@ -78,12 +76,14 @@ export class QuizzesService {
   }
 
   async submit(quizId: string, userId: string, dto: SubmitQuizDto) {
-    // Ambil quiz beserta jawaban yang benar
     const quiz = await this.prisma.quiz.findUnique({
       where: { id: quizId },
       include: {
         questions: {
           include: { options: true },
+        },
+        lesson: {
+          select: { moduleId: true },
         },
       },
     });
@@ -92,34 +92,27 @@ export class QuizzesService {
       throw new NotFoundException('Quiz not found');
     }
 
-    // Cek apakah final exam dan sudah pernah dikerjakan
     if (quiz.isFinalExam) {
       const existingAttempt = await this.prisma.quizAttempt.findFirst({
         where: { quizId, userId },
       });
 
       if (existingAttempt) {
-        throw new BadRequestException(
-          'Final exam can only be attempted once',
-        );
+        throw new BadRequestException('Final exam can only be attempted once');
       }
     }
 
-    // Hitung attempt number
     const attemptCount = await this.prisma.quizAttempt.count({
       where: { quizId, userId },
     });
 
-    // Hitung score
     let earnedPoints = 0;
     let totalPoints = 0;
 
     for (const question of quiz.questions) {
       totalPoints += question.points;
 
-      const userAnswer = dto.answers.find(
-        (a) => a.questionId === question.id,
-      );
+      const userAnswer = dto.answers.find((a) => a.questionId === question.id);
 
       if (userAnswer) {
         const correctOption = question.options.find(
@@ -132,45 +125,54 @@ export class QuizzesService {
       }
     }
 
-    const score = totalPoints > 0
-      ? Math.round((earnedPoints / totalPoints) * 100)
-      : 0;
+    const score =
+      totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
 
     const isPassed = score >= quiz.passingScore;
 
-    // Simpan attempt
-    await this.prisma.quizAttempt.create({
-      data: {
-        userId,
-        quizId,
-        score,
-        isPassed,
-        attemptNumber: attemptCount + 1,
-      },
-    });
-
-    // Update progress kalau passed
-    if (isPassed) {
-      await this.prisma.progress.upsert({
-        where: {
-          userId_lessonId: {
-            userId,
-            lessonId: quiz.lessonId,
-          },
-        },
-        update: {
-          status: 'COMPLETED',
-          score,
-          completedAt: new Date(),
-        },
-        create: {
+    // Simpan attempt dan update progress dalam satu transaction
+    await this.prisma.$transaction(async (tx) => {
+      await tx.quizAttempt.create({
+        data: {
           userId,
-          lessonId: quiz.lessonId,
-          status: 'COMPLETED',
+          quizId,
           score,
-          completedAt: new Date(),
+          isPassed,
+          attemptNumber: attemptCount + 1,
         },
       });
+
+      if (isPassed) {
+        await tx.progress.upsert({
+          where: {
+            userId_lessonId: {
+              userId,
+              lessonId: quiz.lessonId,
+            },
+          },
+          update: {
+            status: 'COMPLETED',
+            score,
+            completedAt: new Date(),
+          },
+          create: {
+            userId,
+            lessonId: quiz.lessonId,
+            status: 'COMPLETED',
+            score,
+            completedAt: new Date(),
+          },
+        });
+      }
+    });
+
+    // Cek apakah modul selesai setelah kuis ini lulus
+    let moduleCompleted = false;
+    if (isPassed) {
+      moduleCompleted = await this.checkAndIssueCertificate(
+        userId,
+        quiz.lesson.moduleId,
+      );
     }
 
     return {
@@ -180,7 +182,57 @@ export class QuizzesService {
       attemptNumber: attemptCount + 1,
       earnedPoints,
       totalPoints,
+      moduleCompleted,
     };
+  }
+
+  /**
+   * Mengecek apakah semua lesson di modul sudah selesai dan menerbitkan sertifikat
+   */
+  private async checkAndIssueCertificate(
+    userId: string,
+    moduleId: string,
+  ): Promise<boolean> {
+    // 1. Ambil jumlah total lesson dalam modul ini
+    const totalLessons = await this.prisma.lesson.count({
+      where: { moduleId },
+    });
+
+    // 2. Ambil jumlah lesson yang sudah diselesaikan oleh user
+    const completedLessons = await this.prisma.progress.count({
+      where: {
+        userId,
+        status: 'COMPLETED',
+        lesson: { moduleId },
+      },
+    });
+
+    // 3. Jika belum semua selesai, keluar
+    if (totalLessons !== completedLessons || totalLessons === 0) {
+      return false;
+    }
+
+    // 4. Cek apakah sertifikat sudah ada untuk menghindari duplikasi
+    const existingCertificate = await this.prisma.certificate.findFirst({
+      where: {
+        userId,
+        moduleId,
+        type: CertificateType.MODULE,
+      },
+    });
+
+    if (!existingCertificate) {
+      await this.prisma.certificate.create({
+        data: {
+          userId,
+          moduleId,
+          type: CertificateType.MODULE,
+        },
+      });
+      return true;
+    }
+
+    return true; // Sudah ada sertifikat
   }
 
   async findByLesson(lessonId: string) {
@@ -194,7 +246,6 @@ export class QuizzesService {
               select: {
                 id: true,
                 text: true,
-                // isCorrect TIDAK dikirim ke user
               },
             },
           },
@@ -207,5 +258,120 @@ export class QuizzesService {
     }
 
     return quiz;
+  }
+
+  async findByLessonForAdmin(lessonId: string) {
+    const quiz = await this.prisma.quiz.findUnique({
+      where: { lessonId },
+      include: {
+        questions: {
+          orderBy: { order: 'asc' },
+          include: {
+            options: true,
+          },
+        },
+      },
+    });
+
+    if (!quiz) {
+      throw new NotFoundException('Quiz not found');
+    }
+
+    return quiz;
+  }
+
+  async update(id: string, dto: UpdateQuizDto) {
+    const quiz = await this.prisma.quiz.findUnique({
+      where: { id },
+    });
+
+    if (!quiz) {
+      throw new NotFoundException('Quiz not found');
+    }
+
+    if (dto.lessonId && dto.lessonId !== quiz.lessonId) {
+      const lesson = await this.prisma.lesson.findUnique({
+        where: { id: dto.lessonId },
+      });
+
+      if (!lesson) {
+        throw new NotFoundException('Lesson not found');
+      }
+
+      if (lesson.type !== 'QUIZ') {
+        throw new BadRequestException('Lesson type must be QUIZ');
+      }
+
+      const existingQuiz = await this.prisma.quiz.findUnique({
+        where: { lessonId: dto.lessonId },
+      });
+
+      if (existingQuiz && existingQuiz.id !== id) {
+        throw new BadRequestException('Quiz already exists for this lesson');
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.quiz.update({
+        where: { id },
+        data: {
+          lessonId: dto.lessonId,
+          timeLimit: dto.timeLimit,
+          passingScore: dto.passingScore,
+          isFinalExam: dto.isFinalExam,
+        },
+      });
+
+      if (dto.questions) {
+        await tx.question.deleteMany({
+          where: { quizId: id },
+        });
+
+        for (const q of dto.questions) {
+          const question = await tx.question.create({
+            data: {
+              quizId: id,
+              text: q.text,
+              points: q.points,
+              order: q.order,
+            },
+          });
+
+          await tx.option.createMany({
+            data: q.options.map((opt) => ({
+              questionId: question.id,
+              text: opt.text,
+              isCorrect: opt.isCorrect,
+            })),
+          });
+        }
+      }
+
+      return tx.quiz.findUnique({
+        where: { id },
+        include: {
+          questions: {
+            orderBy: { order: 'asc' },
+            include: { options: true },
+          },
+        },
+      });
+    });
+  }
+
+  async remove(id: string) {
+    const quiz = await this.prisma.quiz.findUnique({
+      where: { id },
+    });
+
+    if (!quiz) {
+      throw new NotFoundException('Quiz not found');
+    }
+
+    await this.prisma.quiz.delete({
+      where: { id },
+    });
+
+    return { message: 'Quiz deleted successfully' };
   }
 }

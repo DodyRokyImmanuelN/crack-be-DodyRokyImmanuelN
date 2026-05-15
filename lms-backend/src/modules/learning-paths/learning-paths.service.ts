@@ -77,31 +77,31 @@ export class LearningPathsService {
   }
 
   async findBySlug(slug: string) {
-    const learningPath = await this.prisma.learningPath.findUnique({
-      where: { slug },
-      include: {
-        modules: {
-          orderBy: { order: 'asc' },
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            order: true,
-            _count: {
-              select: { lessons: true },
-            },
+  const learningPath = await this.prisma.learningPath.findUnique({
+    where: { slug },
+    include: {
+      modules: {
+        orderBy: { order: 'asc' },
+        select: {
+          id: true,
+          slug: true, 
+          title: true,
+          description: true,
+          order: true,
+          _count: {
+            select: { lessons: true },
           },
         },
       },
-    });
+    },
+  });
 
-    if (!learningPath) {
-      throw new NotFoundException('Learning path not found');
-    }
-
-    return learningPath;
+  if (!learningPath) {
+    throw new NotFoundException('Learning path not found');
   }
 
+  return learningPath;
+}
   async update(id: string, dto: UpdateLearningPathDto) {
     // Cek apakah learning path ada
     const learningPath = await this.prisma.learningPath.findUnique({
