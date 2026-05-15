@@ -83,7 +83,14 @@ export class QuizzesService {
           include: { options: true },
         },
         lesson: {
-          select: { moduleId: true },
+          select: {
+            moduleId: true,
+            module: {
+              select: {
+                learningPathId: true,
+              },
+            },
+          },
         },
       },
     });
@@ -154,6 +161,7 @@ export class QuizzesService {
             status: 'COMPLETED',
             score,
             completedAt: new Date(),
+            lastAccessedAt: new Date(),
           },
           create: {
             userId,
@@ -161,6 +169,7 @@ export class QuizzesService {
             status: 'COMPLETED',
             score,
             completedAt: new Date(),
+            lastAccessedAt: new Date(),
           },
         });
       }
@@ -172,6 +181,7 @@ export class QuizzesService {
       moduleCompleted = await this.checkAndIssueCertificate(
         userId,
         quiz.lesson.moduleId,
+        quiz.lesson.module.learningPathId,
       );
     }
 
@@ -192,6 +202,7 @@ export class QuizzesService {
   private async checkAndIssueCertificate(
     userId: string,
     moduleId: string,
+    learningPathId: string,
   ): Promise<boolean> {
     // 1. Ambil jumlah total lesson dalam modul ini
     const totalLessons = await this.prisma.lesson.count({
@@ -229,10 +240,65 @@ export class QuizzesService {
           type: CertificateType.MODULE,
         },
       });
-      return true;
     }
 
+    await this.checkLearningPathCompletion(userId, learningPathId);
     return true; // Sudah ada sertifikat
+  }
+
+  private async checkLearningPathCompletion(
+    userId: string,
+    learningPathId: string,
+  ) {
+    const modules = await this.prisma.module.findMany({
+      where: { learningPathId },
+      include: { lessons: true },
+    });
+
+    const allLessonIds = modules.flatMap((module) =>
+      module.lessons.map((lesson) => lesson.id),
+    );
+
+    if (allLessonIds.length === 0) return false;
+
+    const completedProgresses = await this.prisma.progress.count({
+      where: {
+        userId,
+        lessonId: { in: allLessonIds },
+        status: 'COMPLETED',
+      },
+    });
+
+    if (completedProgresses !== allLessonIds.length) return false;
+
+    await this.prisma.enrollment.update({
+      where: {
+        userId_learningPathId: {
+          userId,
+          learningPathId,
+        },
+      },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+      },
+    });
+
+    const existingCertificate = await this.prisma.certificate.findFirst({
+      where: { userId, learningPathId, type: CertificateType.LEARNING_PATH },
+    });
+
+    if (!existingCertificate) {
+      await this.prisma.certificate.create({
+        data: {
+          userId,
+          learningPathId,
+          type: CertificateType.LEARNING_PATH,
+        },
+      });
+    }
+
+    return true;
   }
 
   async findByLesson(lessonId: string) {

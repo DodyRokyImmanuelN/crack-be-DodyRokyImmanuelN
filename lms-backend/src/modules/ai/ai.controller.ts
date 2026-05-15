@@ -1,20 +1,21 @@
 import {
-  Controller,
-  Post,
   Body,
-  UseGuards,
+  Controller,
   HttpCode,
   HttpStatus,
+  Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
   ApiBearerAuth,
+  ApiOperation,
   ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AiService } from './ai.service';
 import { ChatDto } from './dto/chat.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @ApiTags('AI')
 @ApiBearerAuth()
@@ -27,12 +28,16 @@ export class AiController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Chat dengan AI',
-    description:
-      'Send Messages and get response from AI',
+    description: 'Asisten belajar berdasarkan lesson yang sedang dibuka',
   })
   @ApiResponse({ status: 200, description: 'Respons dari AI' })
-  @ApiResponse({ status: 501, description: 'AI belum diimplementasi' })
-  async chat(@Body() chatDto: ChatDto) {
-    return this.aiService.chat(chatDto.messages);
+  async chat(@CurrentUser('id') userId: string, @Body() chatDto: ChatDto) {
+    return this.aiService.chat({
+      userId,
+      scope: chatDto.scope,
+      lessonId: chatDto.lessonId,
+      messages: chatDto.messages,
+      progressSummary: chatDto.progressSummary,
+    });
   }
 }

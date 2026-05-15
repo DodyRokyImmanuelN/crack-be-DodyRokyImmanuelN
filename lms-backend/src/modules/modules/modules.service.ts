@@ -1,12 +1,9 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import slugify from 'slugify';
-import { v4 as uuidv4 } from 'uuid'; 
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class ModulesService {
@@ -65,6 +62,13 @@ export class ModulesService {
     const module = await this.prisma.module.findUnique({
       where: { slug },
       include: {
+        learningPath: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+          },
+        },
         lessons: {
           orderBy: { order: 'asc' },
           select: {

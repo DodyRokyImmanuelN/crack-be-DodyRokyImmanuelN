@@ -24,6 +24,7 @@ export class UsersService {
         avatar: true,
         role: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -43,6 +44,7 @@ export class UsersService {
         avatar: true,
         role: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
   }

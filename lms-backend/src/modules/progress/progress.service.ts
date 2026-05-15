@@ -16,17 +16,27 @@ export class ProgressService {
 
     if (!lesson) throw new NotFoundException('Lesson not found');
 
+    const existingProgress = await this.prisma.progress.findUnique({
+      where: {
+        userId_lessonId: { userId, lessonId },
+      },
+    });
+
     return this.prisma.progress.upsert({
       where: {
         userId_lessonId: { userId, lessonId },
       },
       update: {
+        status:
+          existingProgress?.status === 'COMPLETED'
+            ? 'COMPLETED'
+            : 'IN_PROGRESS',
         lastAccessedAt: new Date(),
       },
       create: {
         userId,
         lessonId,
-        status: 'NOT_STARTED',
+        status: 'IN_PROGRESS',
         lastAccessedAt: new Date(),
       },
     });
@@ -90,13 +100,16 @@ export class ProgressService {
       },
     });
 
-    await this.checkModuleCompletion(
+    const moduleCompleted = await this.checkModuleCompletion(
       userId,
       lesson.moduleId,
       lesson.module.learningPathId,
     );
 
-    return progress;
+    return {
+      ...progress,
+      moduleCompleted,
+    };
   }
 
   async getModuleProgress(userId: string, moduleId: string) {
@@ -149,9 +162,7 @@ export class ProgressService {
       moduleId,
       totalLessons: module.lessons.length,
       completedLessons: completedCount,
-      percentage: Math.round(
-        (completedCount / module.lessons.length) * 100,
-      ),
+      percentage: Math.round((completedCount / module.lessons.length) * 100),
       lastAccessedLessonSlug: lastAccessedLesson?.slug ?? null,
       lessons: lessonsWithProgress,
     };
@@ -174,10 +185,13 @@ export class ProgressService {
       },
     });
 
-    if (completedProgresses.length === lessons.length) {
+    if (completedProgresses.length === lessons.length && lessons.length > 0) {
       await this.generateModuleCertificate(userId, moduleId);
       await this.checkLearningPathCompletion(userId, learningPathId);
+      return true;
     }
+
+    return false;
   }
 
   private async checkLearningPathCompletion(
