@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 
 @Injectable()
 export class MailService {
@@ -8,9 +9,12 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
 
   constructor(private configService: ConfigService) {
+    const port = Number(this.configService.get('MAIL_PORT', 2525));
+
     this.transporter = nodemailer.createTransport({
       host: this.configService.getOrThrow('MAIL_HOST'),
-      port: this.configService.get('MAIL_PORT', 2525),
+      port,
+      secure: port === 465,
       auth: {
         user: this.configService.getOrThrow('MAIL_USER'),
         pass: this.configService.getOrThrow('MAIL_PASS'),
@@ -22,10 +26,11 @@ export class MailService {
     const resetUrl = `${this.configService.get('RESET_PASSWORD_URL')}?token=${token}`;
 
     try {
-      await this.transporter.sendMail({
+      const info = (await this.transporter.sendMail({
         from: this.configService.get('MAIL_FROM'),
         to: email,
         subject: 'Reset Password - LMS',
+        text: `Reset password: ${resetUrl}`,
         html: `
           <h2>Reset Password</h2>
           <p>You received this email because a password reset was requested for your account.</p>
@@ -41,10 +46,15 @@ export class MailService {
           ">Reset Password</a>
           <p>If you did not request a password reset, please ignore this email.</p>
         `,
-      });
-      this.logger.log(`Reset password email sent to ${email}`);
+      })) as SMTPTransport.SentMessageInfo;
+      this.logger.log(
+        `Reset password email accepted for ${email}. MessageId: ${info.messageId}. Accepted: ${JSON.stringify(info.accepted)}. Rejected: ${JSON.stringify(info.rejected)}. Response: ${info.response}`,
+      );
     } catch (error) {
-      this.logger.error(`Failed to send reset password email to ${email}`, error);
+      this.logger.error(
+        `Failed to send reset password email to ${email}`,
+        error,
+      );
       throw error;
     }
   }

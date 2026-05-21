@@ -371,7 +371,6 @@ export class AiService implements AiServiceInterface {
         cleanContent.length > excerpt.length ? '...' : ''
       }`,
       `Urutan lesson di modul ini:\n${nextLessons}`,
-      'Catatan: mode ini masih memakai jawaban fallback berbasis konteks. Nanti setelah model AI dipilih, responsnya bisa dibuat lebih natural dan interaktif.',
     ]
       .filter(Boolean)
       .join('\n\n');

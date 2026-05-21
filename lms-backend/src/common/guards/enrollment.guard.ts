@@ -16,9 +16,8 @@ export class EnrollmentGuard implements CanActivate {
     const user = request.user;
     const lessonId = request.params.id || request.params.lessonId;
 
-    if (!lessonId) return true; // kalau tidak ada lessonId, skip guard
+    if (!lessonId) return true;
 
-    // Cari lesson + module + learningPath
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
@@ -34,12 +33,13 @@ export class EnrollmentGuard implements CanActivate {
 
     const learningPathId = lesson.module.learningPath.id;
 
-    // Cek apakah user sudah enroll dan sudah bayar
     const enrollment = await this.prisma.enrollment.findFirst({
       where: {
         userId: user.id,
         learningPathId,
-        status: 'ACTIVE', // ← hanya yang sudah bayar
+        status: {
+          in: ['ACTIVE', 'COMPLETED'],
+        },
       },
     });
 

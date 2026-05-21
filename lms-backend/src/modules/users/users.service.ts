@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -86,6 +85,21 @@ export class UsersService {
           avatar: true,
           role: true,
           createdAt: true,
+          enrollments: {
+            select: {
+              id: true,
+              status: true,
+              enrolledAt: true,
+              learningPath: {
+                select: {
+                  id: true,
+                  title: true,
+                  slug: true,
+                },
+              },
+            },
+            orderBy: { enrolledAt: 'desc' },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),

@@ -1,9 +1,8 @@
 import {
   BadRequestException,
   Injectable,
-  UnauthorizedException,
   Logger,
-
+  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -123,55 +122,66 @@ export class AuthService {
 
     return { accessToken, refreshToken };
   }
+
   async refreshToken(userId: string, refreshToken: string) {
-  // Cari user
-  const user = await this.prisma.user.findUnique({
-    where: { id: userId },
-  });
+    // Cari user
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
 
-  if (!user || !user.refreshToken) {
-    throw new UnauthorizedException('Access denied');
+    if (!user || !user.refreshToken) {
+      throw new UnauthorizedException('Access denied');
+    }
+
+    // Bandingkan refresh token dengan yang di database
+    const isRefreshTokenValid = await bcrypt.compare(
+      refreshToken,
+      user.refreshToken,
+    );
+
+    if (!isRefreshTokenValid) {
+      throw new UnauthorizedException('Refresh token is invalid');
+    }
+
+    // Generate access token baru
+    const tokens = await this.generateTokens(user.id, user.email, user.role);
+
+    // Update refresh token di database
+    const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: hashedRefreshToken },
+    });
+
+    return tokens;
   }
 
-  // Bandingkan refresh token dengan yang di database
-  const isRefreshTokenValid = await bcrypt.compare(
-    refreshToken,
-    user.refreshToken,
-  );
+  decodeToken(token: string): { sub: string } {
+    const decoded = this.jwtService.decode<{ sub?: unknown }>(token);
 
-  if (!isRefreshTokenValid) {
-    throw new UnauthorizedException('Refresh token is invalid');
+    if (!decoded || typeof decoded.sub !== 'string') {
+      throw new UnauthorizedException('Refresh token is invalid');
+    }
+
+    return { sub: decoded.sub };
   }
 
-  // Generate access token baru
-  const tokens = await this.generateTokens(user.id, user.email, user.role);
-
-  // Update refresh token di database
-  const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
-  await this.prisma.user.update({
-    where: { id: user.id },
-    data: { refreshToken: hashedRefreshToken },
-  });
-
-  return tokens;
-  }
-    decodeToken(token: string) {
-      return this.jwtService.decode(token) as { sub: string };
-  }
-    
   async forgotPassword(email: string) {
-    const user = await this.prisma.user.findUnique({ where: {email}});
+    const user = await this.prisma.user.findUnique({ where: { email } });
     // generic response untuk mencegah enumeration attack
-    if(!user) {
-      this.logger.warn(`Forgot password attempt for unregistered email: ${email}` );
-      return { message : 'We have sent a reset password link to your email address.' };
+    if (!user) {
+      this.logger.warn(
+        `Forgot password attempt for unregistered email: ${email}`,
+      );
+      return {
+        message: 'We have sent a reset password link to your email address.',
+      };
     }
     //generate token plain (dikirim via email)
     const plainToken = crypto.randomBytes(32).toString('hex');
-    // hash token sebelum di simpan di database 
-    const hashedToken = await bcrypt.hash(plainToken, 10 );
+    // hash token sebelum di simpan di database
+    const hashedToken = await bcrypt.hash(plainToken, 10);
     const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 menit
-
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -184,21 +194,26 @@ export class AuthService {
     //kirim plain token via email
 
     await this.mailService.sendResetPasswordEmail(user.email, plainToken);
-    this.logger.log(`Reset password token generated and email sent to: ${email}`);
-    return { message: `We have sent a reset password link to your email address`};
+    this.logger.log(
+      `Reset password token generated and email sent to: ${email}`,
+    );
+    return {
+      message: 'We have sent a reset password link to your email address',
+    };
   }
-  // verify token 
-  async verifyResetToken( token: string) {
+
+  // verify token
+  async verifyResetToken(token: string) {
     const users = await this.prisma.user.findMany({
       where: {
-        passwordResetToken: {not: null},
-        passwordResetExpiry: {gt: new Date()},
+        passwordResetToken: { not: null },
+        passwordResetExpiry: { gt: new Date() },
       },
     });
 
     // cari user dengan token yang cocok
     for (const user of users) {
-      const isMatch = await bcrypt.compare( token, user.passwordResetToken!);
+      const isMatch = await bcrypt.compare(token, user.passwordResetToken!);
       if (isMatch) {
         return { valid: true, message: 'Reset token is valid' };
       }
@@ -208,17 +223,18 @@ export class AuthService {
 
   // reset password
 
-  async resetPassword(token: string, newPassword: string){
+  async resetPassword(token: string, newPassword: string) {
     // cari semua user dengan token yang masih valid
     const users = await this.prisma.user.findMany({
       where: {
-        passwordResetToken: {not: null},
-        passwordResetExpiry: {gt: new Date()},
-       },
+        passwordResetToken: { not: null },
+        passwordResetExpiry: { gt: new Date() },
+      },
     });
 
-    // cari user dengan token yang cocok 
-    let matchedUser: Awaited<ReturnType<typeof this.prisma.user.findFirst>> = null;
+    // cari user dengan token yang cocok
+    let matchedUser: Awaited<ReturnType<typeof this.prisma.user.findFirst>> =
+      null;
     for (const user of users) {
       const isMatch = await bcrypt.compare(token, user.passwordResetToken!);
       if (isMatch) {
@@ -230,12 +246,12 @@ export class AuthService {
       throw new BadRequestException('Reset token is invalid or has expired');
     }
 
-    //hash password baru dan clear token 
+    //hash password baru dan clear token
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
-      where: { id: matchedUser.id},
-      data : {
+      where: { id: matchedUser.id },
+      data: {
         password: hashedPassword,
         passwordResetToken: null,
         passwordResetExpiry: null,
@@ -243,8 +259,6 @@ export class AuthService {
     });
 
     this.logger.log(`Password reset successful for user: ${matchedUser.email}`);
-    return { message: ' Password has been reset successfully'};
+    return { message: ' Password has been reset successfully' };
   }
-  
-
 }
